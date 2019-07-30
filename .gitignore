@@ -1,3 +1,10 @@
+# custom
+dogImages/
+dogImages1/
+models/download_models.sh
+models/vgg_normalised.pth
+models/decoder.pth
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
