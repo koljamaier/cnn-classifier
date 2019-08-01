@@ -7,26 +7,55 @@ import torch.optim as optim
 import torch.utils.data
 import torch
 import torch.nn as nn
+import torchvision.models as models
+import torch.nn as nn
+import torch.optim as optim
+
+
+from torchvision import datasets, models, transforms
 
 # imports the model in model.py by name
-from model import BinaryClassifier
+#from model import BinaryClassifier
 
 def model_fn(model_dir):
     """Load the PyTorch model from the `model_dir` directory."""
     print("Loading model.")
 
     # First, load the parameters used to create the model.
-    model_info = {}
-    model_info_path = os.path.join(model_dir, 'model_info.pth')
-    with open(model_info_path, 'rb') as f:
-        model_info = torch.load(f)
+    #model_info = {}
+    #model_info_path = os.path.join(model_dir, 'model_info.pth')
+    #with open(model_info_path, 'rb') as f:
+    #    model_info = torch.load(f)
 
-    print("model_info: {}".format(model_info))
+    #print("model_info: {}".format(model_info))
 
     # Determine the device and construct the model.
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = BinaryClassifier(model_info['input_features'], model_info['hidden_dim'], model_info['output_dim'])
+    
+    ###
 
+
+    #model = BinaryClassifier(model_info['input_features'], model_info['hidden_dim'], model_info['output_dim'])
+    # define ResNet50 model
+    model = models.resnet50(pretrained=True)
+
+    # to be able to switch out the last layer, we first need to know the shape,
+    # so that the dimensions are the same
+    in_features = model.fc.in_features
+
+    # our transfer learning algorithm will cut out the last layer
+    # and retrain it on our data
+    model.fc = nn.Linear(in_features, 133)
+
+    # move model to GPU if CUDA is available
+    #if use_cuda:
+    #    model = model.cuda()
+    
+    
+    
+    ###
+    
+    
     # Load the stored model parameters.
     model_path = os.path.join(model_dir, 'model.pth')
     with open(model_path, 'rb') as f:
@@ -42,14 +71,50 @@ def model_fn(model_dir):
 def _get_train_data_loader(batch_size, training_dir):
     print("Get train data loader.")
 
-    train_data = pd.read_csv(os.path.join(training_dir, "train.csv"), header=None, names=None)
+    #train_data = pd.read_csv(os.path.join(training_dir, "train.csv"), header=None, names=None)
 
-    train_y = torch.from_numpy(train_data[[0]].values).float().squeeze()
-    train_x = torch.from_numpy(train_data.drop([0], axis=1).values).float()
+    #train_y = torch.from_numpy(train_data[[0]].values).float().squeeze()
+    #train_x = torch.from_numpy(train_data.drop([0], axis=1).values).float()
 
-    train_ds = torch.utils.data.TensorDataset(train_x, train_y)
+    #train_ds = torch.utils.data.TensorDataset(train_x, train_y)
 
-    return torch.utils.data.DataLoader(train_ds, batch_size=batch_size)
+    #return torch.utils.data.DataLoader(train_ds, batch_size=batch_size)
+
+    data_transforms = {
+        'train': transforms.Compose([
+            transforms.Resize(224),
+            transforms.CenterCrop((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ]),
+        'valid': transforms.Compose([
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ]),
+        'test': transforms.Compose([
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ]),
+    }
+
+    data_dir = 'dogImages'
+
+    # we create some dictionaries
+    image_datasets = {x: datasets.ImageFolder(os.path.join(data_dir, x),
+                                              data_transforms[x])
+                      for x in ['train', 'valid', 'test']}
+    dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=16,
+                                                  shuffle=True, num_workers=4)
+                   for x in ['train', 'valid', 'test']}
+
+    class_names = image_datasets['train'].classes
+    n_classes = len(class_names)
+
+    return dataloaders
 
 
 # Provided training function
@@ -64,7 +129,8 @@ def train(model, train_loader, epochs, criterion, optimizer, device):
     optimizer    - The optimizer to use during training.
     device       - Where the model and data should be loaded (gpu or cpu).
     """
-    
+
+    '''
     # training loop is provided
     for epoch in range(1, epochs + 1):
         model.train() # Make sure that the model is in training mode.
@@ -91,7 +157,78 @@ def train(model, train_loader, epochs, criterion, optimizer, device):
             total_loss += loss.data.item()
 
         print("Epoch: {}, Loss: {}".format(epoch, total_loss / len(train_loader)))
+    '''
 
+
+    # valid_loss_min = 5.0 #np.Inf  # 3.877533
+
+    #if os.path.exists(save_path):
+    #    model.load_state_dict(torch.load(save_path))
+
+    for epoch in range(1, epochs + 1):
+        # initialize variables to monitor training and validation loss
+        train_loss = 0.0
+        valid_loss = 0.0
+
+        ###################
+        # train the model #
+        ###################
+        model.train()
+        for data, target in train_loader['train']:
+            # move to GPU
+            data = data.to(device)
+            target = target.to(device)
+
+            # clear the gradients of all optimized variables
+            optimizer.zero_grad()
+            # forward pass: compute predicted outputs by passing inputs to the model
+            output = model(data)
+            # calculate the batch loss
+            loss = criterion(output, target)
+            # backward pass: compute gradient of the loss with respect to model parameters
+            loss.backward()
+            # perform a single optimization step (parameter update)
+            optimizer.step()
+            # update training loss
+            train_loss += loss.item() * data.size(0)
+
+        ######################
+        # validate the model #
+        ######################
+        model.eval()
+        for data, target in train_loader['valid']:
+            # move to GPU
+            data = data.to(device)
+            target = target.to(device)
+            ## update the average validation loss
+
+            # forward pass: compute predicted outputs by passing inputs to the model
+            output = model(data)
+            # calculate the batch loss
+            loss = criterion(output, target)
+            # update average validation loss
+            valid_loss += loss.item() * data.size(0)
+
+        # calculate average losses
+        train_loss = train_loss / len(train_loader['train'].dataset)
+        valid_loss = valid_loss / len(train_loader['valid'].dataset)
+
+        # print training/validation statistics
+        print('Epoch: {} \tTraining Loss: {:.6f} \tValidation Loss: {:.6f}'.format(
+            epoch,
+            train_loss,
+            valid_loss
+        ))
+
+        # save model if validation loss has decreased
+        #if valid_loss <= valid_loss_min:
+        #    print('Validation loss decreased ({:.6f} --> {:.6f}).  Saving model ...'.format(
+        #        valid_loss_min,
+        #        valid_loss))
+        #    torch.save(model.state_dict(), save_path)
+        #    valid_loss_min = valid_loss
+    # return trained model
+    # return model
 
 ## TODO: Complete the main code
 if __name__ == '__main__':
@@ -119,9 +256,9 @@ if __name__ == '__main__':
     ## TODO: Add args for the three model parameters: input_features, hidden_dim, output_dim
     # Model Parameters
     #parser.add_argument('--input_features', type=str, default='c_1 c_2 c_5 lcs_word')
-    parser.add_argument('--input_features', type=int, default=4)
-    parser.add_argument('--hidden_dim', type=int, default=10)
-    parser.add_argument('--output_dim', type=int, default=1)
+    #parser.add_argument('--input_features', type=int, default=4)
+    #parser.add_argument('--hidden_dim', type=int, default=10)
+    #parser.add_argument('--output_dim', type=int, default=1)
     
     
     # args holds all passed-in arguments
@@ -141,25 +278,40 @@ if __name__ == '__main__':
     ## TODO:  Build the model by passing in the input params
     # To get params from the parser, call args.argument_name, ex. args.epochs or ards.hidden_dim
     # Don't forget to move your model .to(device) to move to GPU , if appropriate
-    model = BinaryClassifier(args.input_features, args.hidden_dim, args.output_dim).to(device)
+
+    #model = BinaryClassifier(args.input_features, args.hidden_dim, args.output_dim).to(device)
+    # define ResNet50 model
+    model = models.resnet50(pretrained=True)
+
+    # to be able to switch out the last layer, we first need to know the shape,
+    # so that the dimensions are the same
+    in_features = model.fc.in_features
+
+    # our transfer learning algorithm will cut out the last layer
+    # and retrain it on our data
+    model.fc = nn.Linear(in_features, 133).to(device)
 
     ## TODO: Define an optimizer and loss function for training
-    optimizer = optim.Adam(model.parameters(), lr=0.01)
-    criterion = nn.BCELoss()
+    #optimizer = optim.Adam(model.parameters(), lr=0.01)
+    #criterion = nn.BCELoss()
+
+    optimizer = optim.Adam(model.fc.parameters(), lr=0.001)
+    criterion = nn.CrossEntropyLoss()
 
     # Trains the model (given line of code, which calls the above training function)
     train(model, train_loader, args.epochs, criterion, optimizer, device)
 
     ## TODO: complete in the model_info by adding three argument names, the first is given
     # Keep the keys of this dictionary as they are 
-    model_info_path = os.path.join(args.model_dir, 'model_info.pth')
-    with open(model_info_path, 'wb') as f:
-        model_info = {
-            'input_features': args.input_features,
-            'hidden_dim': args.hidden_dim,
-            'output_dim': args.output_dim,
-        }
-        torch.save(model_info, f)
+    #model_info_path = os.path.join(args.model_dir, 'model_info.pth')
+
+    #with open(model_info_path, 'wb') as f:
+    #    model_info = {
+    #        'input_features': args.input_features,
+    #        'hidden_dim': args.hidden_dim,
+    #        'output_dim': args.output_dim,
+    #    }
+    #    torch.save(model_info, f)
         
     ## --- End of your code  --- ##
     
