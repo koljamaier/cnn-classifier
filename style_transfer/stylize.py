@@ -34,7 +34,6 @@ def transfer(content_dir, style_dir, output_dir, num_styles, extensions=['png', 
     style_dir = style_dir.resolve()
     output_dir = Path(output_dir)
     output_dir = output_dir.resolve()
-    print(style_dir)
     assert style_dir.is_dir(), 'Style directory not found'
 
     # collect content files

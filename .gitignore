@@ -1,6 +1,5 @@
 # custom
-dogImages/
-dogImages1/
+dogImages*/
 models/download_models.sh
 models/vgg_normalised.pth
 models/decoder.pth
