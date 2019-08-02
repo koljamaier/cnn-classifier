@@ -19,21 +19,15 @@ def model_fn(model_dir):
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    model = models.resnet50(pretrained=True)
+    model = models.vgg16(pretrained=True)  # models.resnet50(pretrained=True)
 
-    # to be able to switch out the last layer, we first need to know the shape,
-    # so that the dimensions are the same
-    in_features = model.fc.in_features
+    for param in model.parameters():
+        param.requires_grad = False
 
-    # our transfer learning algorithm will cut out the last layer
-    # and retrain it on our data
-    model.fc = nn.Linear(in_features, 133)
-
-    # move model to GPU if CUDA is available
-    # if use_cuda:
-    #    model = model.cuda()
-
-    ###
+    # vgg16
+    n_inputs = model.classifier[6].in_features
+    last_layer = nn.Linear(n_inputs, 133)
+    model.classifier[6] = last_layer
 
     # Load the stored model parameters.
     model_path = os.path.join(model_dir, 'model.pth')
@@ -44,18 +38,42 @@ def model_fn(model_dir):
     model.to(device).eval()
 
     print("Done loading model.")
+
+    '''
+    ####
+    model = models.vgg16(pretrained=True) # models.resnet50(pretrained=True)
+    # Freeze parameters so we don't backprop through them
+    for param in model.parameters():
+        param.requires_grad = False
+
+
+    # vgg16
+    n_inputs = model.classifier[6].in_features
+    last_layer = nn.Linear(n_inputs, 133)
+    model.classifier[6] = last_layer
+    model.to(device)
+
+    optimizer = optim.Adam(model.parameters(), lr=0.01)
+    criterion = nn.CrossEntropyLoss()
+    ####
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    model = models.vgg16(pretrained=True) # models.resnet50(pretrained=True)
+
+    for param in model.parameters():
+        param.requires_grad = False
+
+    # vgg16
+    n_inputs = model.classifier[6].in_features
+    last_layer = nn.Linear(n_inputs, 133)
+    model.classifier[6] = last_layer
+    '''
     return model
 
+
 # Provided input data loading
-'''
 def input_fn(serialized_input_data, content_type):
-    #print('Deserializing the input data.')
-    #if content_type == NP_CONTENT_TYPE:
-    #    stream = BytesIO(serialized_input_data)
-    #    return np.load(stream)
-    #raise Exception('Requested unsupported ContentType in content_type: ' + content_type)
-
-
     """A default input_fn that can handle JSON, CSV and NPZ formats.
     Args:
         input_data: the request payload serialized in the content_type format
@@ -63,39 +81,48 @@ def input_fn(serialized_input_data, content_type):
     Returns: input_data deserialized into torch.FloatTensor or torch.cuda.FloatTensor depending if cuda is available.
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    #np_array = encoders.decode(serialized_input_data, content_type)
+    # np_array = encoders.decode(serialized_input_data, content_type)
     # WE ASSUME THAT THE INPUT IS NOT SERIALIZED AND COMES IN AS NP ARRAY
-    #tensor = torch.from_numpy(serialized_input_data)
-    #return tensor.to(device)
+    # tensor = torch.from_numpy(serialized_input_data)
+    # return tensor.to(device)
 
-    #next try from https://sagemaker.readthedocs.io/en/stable/using_pytorch.html
+    # next try from https://sagemaker.readthedocs.io/en/stable/using_pytorch.html
 
-    return torch.load(BytesIO(serialized_input_data)).to(device)
+    # return torch.load(BytesIO(serialized_input_data)) #.to(device)
 
-
+    print('Deserializing the input data.')
+    if content_type == NP_CONTENT_TYPE:
+        stream = BytesIO(serialized_input_data)
+        return np.load(stream)
+    raise Exception('Requested unsupported ContentType in content_type: ' + content_type)
 
 
 # Provided output data handling
 def output_fn(prediction_output, accept):
     print('Serializing the generated output.')
+
+    # stream = BytesIO()
+    # np.save(stream, prediction_output)
+    # return stream.getvalue(), accept
     if accept == NP_CONTENT_TYPE:
         stream = BytesIO()
         np.save(stream, prediction_output)
         return stream.getvalue(), accept
     raise Exception('Requested unsupported ContentType in Accept: ' + accept)
-'''
+
 
 # Provided predict function
 def predict_fn(input_data, model):
     print('Predicting class labels for the input data...')
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
+
     # Process input_data so that it is ready to be sent to our model.
     # data = torch.from_numpy(input_data.astype('float32'))
     # data = data.to(device)
 
-    data = input_data.to(device)
+    data = torch.from_numpy(input_data.astype('float32'))
+    data = data.to(device)
 
     # Put the model into evaluation mode
     model.eval()
