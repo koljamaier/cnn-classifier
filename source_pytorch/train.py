@@ -10,8 +10,59 @@ import torch.nn as nn
 import torchvision.models as models
 import torch.nn as nn
 import torch.optim as optim
+from imgaug import augmenters as iaa
+import imgaug as ia
 
+import torchvision
 from torchvision import datasets, models, transforms
+import numpy as np
+
+
+# sadly the library does have GPU support as of now
+class ImgAugTransform:
+  def __init__(self):
+    #heatmaps = np.random.random(size=(16, 64, 64, 1)).astype(np.float32)
+    #self.heatmap = ia.quokka_heatmap(size=0.25)
+    self.aug = iaa.Sequential([
+        iaa.Resize((224, 224)),
+        # blur images with a sigma of 0 to 3.0
+        iaa.Sometimes(0.25, iaa.GaussianBlur(sigma=(0, 3.0))),
+        # horizontally flip 50% of the images
+        iaa.Fliplr(0.5),
+        # rotate by -20 to +20 degrees. The default mode is 'constant' which displays a constant value where the
+        # picture was 'rotated out'. A better mode is 'symmetric' which 
+        #'Pads with the reflection of the vector mirrored along the edge of the array' (see docs) 
+        iaa.Affine(rotate=(-20, 20), mode='symmetric'),
+        
+        #iaa.Sometimes(0.25,
+        #              iaa.OneOf([iaa.Dropout(p=(0, 0.1)),
+        #                         iaa.CoarseDropout(0.1, size_percent=0.5)])),
+        iaa.Sometimes(0.25,
+                      iaa.EdgeDetect(alpha=(0.5, 1.0))),
+        
+        #iaa.AddToHueAndSaturation(value=(-10, 10), per_channel=True)
+    ])
+      
+  def __call__(self, img):
+    img = np.array(img)
+
+    '''
+    # This is a experimental try to get even more shape
+    # informations via imgaug heatmap feature.
+    # While this code works, I could not find out how
+    # to create custom heatmaps (not the quoakka_heatmap) for our images
+
+    heatmap = ia.quokka_heatmap(size=0.25)
+    print(f'img shape via heatmap.shape {heatmap.shape}')
+    print(f'img shape {img.shape}')
+    image_aug, heatmap_aug = self.aug(image=img, heatmaps=heatmap)
+    return np.hstack([image_aug, heatmap_aug.draw(cmap="gray")[0]])
+    
+    '''
+
+    # either return a PIL.Image here or use PyTorch Lambda transform later on
+    # return PIL.Image.fromarray(self.aug.augment_image(img))    
+    return self.aug.augment_image(img)
 
 
 # imports the model in model.py by name
@@ -93,28 +144,36 @@ def _get_train_data_loader(batch_size, training_dir):
     # https://stackoverflow.com/a/23575424/7434289
 
     from PIL import ImageFile
+    #from PIL import Image
+    import PIL
 
     ImageFile.LOAD_TRUNCATED_IMAGES = True
 
     data_transforms = {
-        'train': transforms.Compose([
-            transforms.Resize(224),
-            transforms.CenterCrop((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        'train': torchvision.transforms.Compose([
+            ImgAugTransform(),
+            torchvision.transforms.Lambda(lambda x: PIL.Image.fromarray(x)),
+            #torchvision.transforms.Resize(224),
+            #torchvision.transforms.CenterCrop((224,224)),
+            #iaa.Sometimes(0.25, iaa.GaussianBlur(sigma=(0, 3.0))),
+            #torchvision.transforms.RandomAffine(degrees=5, translate=(0.1, 0.1), scale=(1.0, 1.1), shear=5, resample=False, fillcolor=0),
+            #torchvision.transforms.RandomApply([torchvision.transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1)], p=0.5),
+            torchvision.transforms.RandomGrayscale(p=0.3),
+            torchvision.transforms.ToTensor(),
+            torchvision.transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ]),
-        'valid': transforms.Compose([
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        'valid': torchvision.transforms.Compose([
+            torchvision.transforms.Resize(224),
+            torchvision.transforms.CenterCrop(224),
+            torchvision.transforms.ToTensor(),
+            torchvision.transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ]),
-        'test': transforms.Compose([
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ]),
+        'test': torchvision.transforms.Compose([
+            torchvision.transforms.Resize(224),
+            torchvision.transforms.CenterCrop(224),
+            torchvision.transforms.ToTensor(),
+            torchvision.transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ]) 
     }
 
     data_dir = training_dir  # 'dogImages'
@@ -123,8 +182,9 @@ def _get_train_data_loader(batch_size, training_dir):
     image_datasets = {x: datasets.ImageFolder(os.path.join(data_dir, x),
                                               data_transforms[x])
                       for x in ['train', 'valid', 'test']}
+    # ATTENTION: WE NEED TO SET num_workers to 0! Otherwise we will run into errors
     dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=16,
-                                                  shuffle=True, num_workers=4)
+                                                  shuffle=True, num_workers=0)
                    for x in ['train', 'valid', 'test']}
 
     class_names = image_datasets['train'].classes
