@@ -104,6 +104,8 @@ def _get_train_data_loader(batch_size, training_dir):
     data_transforms = {
         'train': torchvision.transforms.Compose([
             AdvancedAugmentation(),
+            # this lambda expression is quite important as it transforms the output of imgaug library to a format
+            # that our torchvision.transforms steps can pick up
             torchvision.transforms.Lambda(lambda x: PIL.Image.fromarray(x)),
             # grayscale 30% of our pictures
             torchvision.transforms.RandomGrayscale(p=0.3),
