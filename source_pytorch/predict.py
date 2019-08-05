@@ -6,9 +6,6 @@ from six import BytesIO
 from torchvision import datasets, models, transforms
 import torch.nn as nn
 
-# import model from model.py, by name
-# from model import BinaryClassifier
-
 # default content type is numpy array
 NP_CONTENT_TYPE = 'application/x-npy'
 
@@ -39,56 +36,16 @@ def model_fn(model_dir):
 
     print("Done loading model.")
 
-    '''
-    ####
-    model = models.vgg16(pretrained=True) # models.resnet50(pretrained=True)
-    # Freeze parameters so we don't backprop through them
-    for param in model.parameters():
-        param.requires_grad = False
-
-
-    # vgg16
-    n_inputs = model.classifier[6].in_features
-    last_layer = nn.Linear(n_inputs, 133)
-    model.classifier[6] = last_layer
-    model.to(device)
-
-    optimizer = optim.Adam(model.parameters(), lr=0.01)
-    criterion = nn.CrossEntropyLoss()
-    ####
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    model = models.vgg16(pretrained=True) # models.resnet50(pretrained=True)
-
-    for param in model.parameters():
-        param.requires_grad = False
-
-    # vgg16
-    n_inputs = model.classifier[6].in_features
-    last_layer = nn.Linear(n_inputs, 133)
-    model.classifier[6] = last_layer
-    '''
     return model
 
 
 # Provided input data loading
 def input_fn(serialized_input_data, content_type):
-    """A default input_fn that can handle JSON, CSV and NPZ formats.
-    Args:
-        input_data: the request payload serialized in the content_type format
-        content_type: the request content_type
-    Returns: input_data deserialized into torch.FloatTensor or torch.cuda.FloatTensor depending if cuda is available.
+    """
+    We assume, that data will be passed in as numpy array. With this information we can deserialize the
+    data straightforward
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # np_array = encoders.decode(serialized_input_data, content_type)
-    # WE ASSUME THAT THE INPUT IS NOT SERIALIZED AND COMES IN AS NP ARRAY
-    # tensor = torch.from_numpy(serialized_input_data)
-    # return tensor.to(device)
-
-    # next try from https://sagemaker.readthedocs.io/en/stable/using_pytorch.html
-
-    # return torch.load(BytesIO(serialized_input_data)) #.to(device)
 
     print('Deserializing the input data.')
     if content_type == NP_CONTENT_TYPE:
@@ -101,9 +58,6 @@ def input_fn(serialized_input_data, content_type):
 def output_fn(prediction_output, accept):
     print('Serializing the generated output.')
 
-    # stream = BytesIO()
-    # np.save(stream, prediction_output)
-    # return stream.getvalue(), accept
     if accept == NP_CONTENT_TYPE:
         stream = BytesIO()
         np.save(stream, prediction_output)
@@ -111,15 +65,12 @@ def output_fn(prediction_output, accept):
     raise Exception('Requested unsupported ContentType in Accept: ' + accept)
 
 
-# Provided predict function
+
+# this function gets called after our model is deployed. It gives back the prediction label for the dog breed
 def predict_fn(input_data, model):
     print('Predicting class labels for the input data...')
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    # Process input_data so that it is ready to be sent to our model.
-    # data = torch.from_numpy(input_data.astype('float32'))
-    # data = data.to(device)
 
     data = torch.from_numpy(input_data.astype('float32'))
     data = data.to(device)
@@ -128,7 +79,7 @@ def predict_fn(input_data, model):
     model.eval()
 
     # Compute the result of applying the model to the input data
-    # The variable `out_label` should be a rounded value, either 1 or 0
+    # The variable `out_label` should be a rounded value between 0 and 133 (our dog breed classes)
     out = model(data)
     out_np = out.cpu().detach().numpy()
     out_label = out_np.round()
