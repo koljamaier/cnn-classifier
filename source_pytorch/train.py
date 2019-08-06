@@ -32,7 +32,7 @@ class AdvancedAugmentation:
         #'Pads with the reflection of the vector mirrored along the edge of the array' (see docs) 
         iaa.Affine(rotate=(-20, 20), mode='symmetric'),
         # do edge detection on 25% of the pictures
-        iaa.Sometimes(0.25,
+        iaa.Sometimes(0.10,
                       iaa.EdgeDetect(alpha=(0.5, 1.0))),
     ])
       
@@ -108,7 +108,7 @@ def _get_train_data_loader(batch_size, training_dir):
             # that our torchvision.transforms steps can pick up
             torchvision.transforms.Lambda(lambda x: PIL.Image.fromarray(x)),
             # grayscale 30% of our pictures
-            torchvision.transforms.RandomGrayscale(p=0.3),
+            torchvision.transforms.RandomGrayscale(p=0.1),
             torchvision.transforms.ToTensor(),
             torchvision.transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ]),
@@ -272,12 +272,6 @@ if __name__ == '__main__':
     model.classifier[6] = last_layer
     model.to(device)
 
-    ## TODO: Define an optimizer and loss function for training
-    # optimizer = optim.Adam(model.parameters(), lr=0.01)
-    # criterion = nn.BCELoss()
-
-    # optimizer = optim.Adam(model.fc.parameters(), lr=0.001)
-    # optimizer = optim.Adam(model.parameters(), lr=0.01)
     optimizer = optim.SGD(model.classifier.parameters(), lr=0.001)
     criterion = nn.CrossEntropyLoss()
 

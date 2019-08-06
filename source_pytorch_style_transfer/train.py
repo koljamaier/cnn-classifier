@@ -101,7 +101,8 @@ def _get_train_data_loader(batch_size, training_dir):
     # https://stackoverflow.com/a/23575424/7434289
     ImageFile.LOAD_TRUNCATED_IMAGES = True
     
-    # this data_transforms is specified without the imgaug transforms (edge detection)
+    # We want to keep the baseline pretty simple, that is why this data_transforms 
+    # is specified without the imgaug transforms (edge detection etc.)
     data_transforms = {
         'train': torchvision.transforms.Compose([
             torchvision.transforms.Resize(224),
@@ -269,12 +270,6 @@ if __name__ == '__main__':
     model.classifier[6] = last_layer
     model.to(device)
 
-    ## TODO: Define an optimizer and loss function for training
-    # optimizer = optim.Adam(model.parameters(), lr=0.01)
-    # criterion = nn.BCELoss()
-
-    # optimizer = optim.Adam(model.fc.parameters(), lr=0.001)
-    # optimizer = optim.Adam(model.parameters(), lr=0.01)
     optimizer = optim.SGD(model.classifier.parameters(), lr=0.001)
     criterion = nn.CrossEntropyLoss()
 
